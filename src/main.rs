@@ -169,9 +169,22 @@ fn peers_of_cell(idx: usize) -> Vec<usize> {
 /// .mp3 - rodio's decoder auto-detects the actual format from the file's
 /// contents regardless of extension, so any of these work.
 fn load_sound_file(name: &str) -> Option<Vec<u8>> {
-    for ext in ["wav", "ogg", "mp3", "flac"] {
-        if let Ok(bytes) = std::fs::read(app_dir().join("sounds").join(format!("{name}.{ext}"))) {
-            return Some(bytes);
+    // 1. Installed/bundled app: sounds/ next to the executable
+    // 2. Development: sounds/ in the project root (where cargo run is invoked)
+    // 3. Debug builds: compile-time manifest dir as a last resort
+    let candidates = {
+        let mut v = vec![app_dir().join("sounds"), PathBuf::from("sounds")];
+        #[cfg(debug_assertions)]
+        v.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("sounds"));
+        v
+    };
+
+    for dir in &candidates {
+        for ext in ["wav", "ogg", "mp3", "flac"] {
+            let path = dir.join(format!("{name}.{ext}"));
+            if let Ok(bytes) = std::fs::read(&path) {
+                return Some(bytes);
+            }
         }
     }
     None
@@ -199,8 +212,12 @@ pub struct SoundEngine {
 
 impl SoundEngine {
     fn new() -> Self {
+        let mut handle = rodio::DeviceSinkBuilder::open_default_sink().ok();
+        if let Some(ref mut h) = &mut handle {
+            h.log_on_drop(false);
+        }
         Self {
-            handle: rodio::DeviceSinkBuilder::open_default_sink().ok(),
+            handle,
             click: load_sound_file("click"),
             error: load_sound_file("error"),
             success: load_sound_file("success"),
@@ -526,7 +543,7 @@ impl SudokuApp {
     /// Restores every cell an action touched (not just one - see "smart
     /// notes" above) and rolls the mistake counter back too. Still recorded
     /// as an `"U"` move in the log, naming which step it reverted, so the
-    /// exported session reflects what actually happened.
+    /// exported session reflect what actually happened.
     pub fn undo(&mut self) {
         if let Some(entry) = self.undo_stack.pop() {
             for c in &entry.cells {

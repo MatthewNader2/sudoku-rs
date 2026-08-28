@@ -1010,6 +1010,7 @@ impl Solver {
 }
 
 /// Rates a puzzle by the hardest human technique required to solve it.
+#[allow(dead_code)]
 pub fn rate_difficulty(board: &Board) -> Difficulty {
     let mut solver = Solver::from_board(board);
     solver.solve_and_grade(None)
